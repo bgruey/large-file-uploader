@@ -1,0 +1,12 @@
+services:
+  web:
+    build: .
+    image: none-of-this-is-necessary
+    container_name: large-file-uploader
+    init: true
+    
+    volumes:
+      - ./html:/var/www/html
+      - ./uploads:/tmp/uploads
+    
+    network_mode: "host"
