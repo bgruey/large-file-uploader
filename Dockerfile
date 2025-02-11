@@ -1,3 +1,3 @@
 FROM php:8.2-apache
 
-RUN echo "LogLevel debug" >> /etc/apache2/apache2.conf 
+COPY ./configs/uploads.ini /usr/local/etc/php/conf.d/uploads.ini

@@ -4,14 +4,6 @@ services:
     image: none-of-this-is-necessary
     container_name: large-file-uploader
     init: true
-
-    environment:
-      PHP__post_max_size: '50M'
-      PHP__upload_max_filesize: '50M'
-      PHP__log_errors: "on"
-
-    ports:
-      - "10666:80"  # ?, I don't remember why this works...
     
     volumes:
       - ./html:/var/www/html

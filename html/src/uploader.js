@@ -3,13 +3,11 @@
 window.BlobBuilder = window.MozBlobBuilder || window.WebKitBlobBuilder || window.BlobBuilder;
 var kb_size = 1024;
 var mb_size = kb_size * kb_size;
-var chunksize = 1 * mb_size; 
-// arguing with php docker containter settings
-// 2mb is default
+var chunksize = 32 * mb_size; 
 
 // Do the POST for a chunk
 async function upload_data(data, checksum, filename, file_version, finished) {
-    return new Promise((resolve) => {
+    return new Promise((resolve, reject) => {
       setTimeout(() => {
         let xhr = new XMLHttpRequest();
         let send_data = new FormData();
@@ -18,14 +16,22 @@ async function upload_data(data, checksum, filename, file_version, finished) {
         send_data.append("filename", filename);
         send_data.append("file_version", file_version);
         send_data.append("finished", finished);
-
         send_data.append("checksum", checksum);
 
         xhr.open("POST", "http://localhost/upload.php");
 
         xhr.onload = function () {
-            if (this.status == 200) {
+            if (this.status == 204) {
                 resolve(xhr.response);
+            } else if(this.status == 201) {
+                console.log("Finished upload!");
+                resolve(xhr.response);
+            } else if(this.status == 422) {
+                console.log("Shoudl try to resend here, dying instead.");
+                reject({
+                    status: this.status,
+                    statusText: xhr.responseText
+                });
             } else {
                 reject({
                     status: this.status,
@@ -43,6 +49,10 @@ async function upload_data(data, checksum, filename, file_version, finished) {
         xhr.send(send_data);
 
       }, 200);
+    }).then(
+        () =>{}
+    ).catch(error => {
+        console.log(error);
     });
 }
 
@@ -61,12 +71,12 @@ async function upload_in_chunks() {
 
     while (pos < filesize) {
         chunk = file.slice(pos, pos+chunksize);
-        // console.log(await chunk.text());
         // checksum = crc32(await chunk.text());
+        // checksum = "passz";  // Failed checksum test
         checksum = "pass";
 
         start = Date.now();
-        await upload_data(chunk, checksum, filename, file_version, false);
+        r = await upload_data(chunk, checksum, filename, file_version, 0);
         // in seconds
         speed = chunksize / ((Date.now() - start) / 1000.0);
 
@@ -78,10 +88,8 @@ async function upload_in_chunks() {
         
         pos += chunksize;
         
-        // console.log("Break in the while loop to upload for testing");
-        // break;
     }
-    let r = await upload_data("", "", filename, file_version, true);
+    r = await upload_data("", "", filename, file_version, 1);
     update_progress(100, 0, "zoom!");
 }
 
@@ -102,7 +110,7 @@ async function update_file_info() {
     let file = document.getElementById("fileToUpload").files[0];
         
     if (file) {
-        // get a checksum-ish value for 5kb of ever 10mb of file.
+        // get a checksum-ish value for 5kb of every 10mb of file.
         let file_version = await crc32_file(file, 5 * kb_size, 10 * mb_size);
         // round to 2 decimal points
         let fileSize = (Math.round(file.size * 100 / mb_size) / 100).toString() + 'MB';
@@ -166,7 +174,6 @@ async function crc32_file(file, read_size, skip_size) {
     cur = 0;
     while(pos < end) {
         cur = crc32(await file.slice(pos, pos + read_size).text());
-        // console.log(cur, pos/mb_size, end/mb_size, read_size, skip_size)
         if (add) {
             total += cur
         }
