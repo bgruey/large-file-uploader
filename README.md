@@ -15,6 +15,24 @@ and then navigate to `http://localhost/index.html`.
 
 Largely academic in that this works as needed (probably).
 
+### Cancel and resume and musing questions
+
+Some of the background work is done for this, but it's not used yet.
+
+The main loop would need to check if the `cancel` button was pressed, and stop
+if so.
+
+We'd also need to check if only part of a chunk was written to the appending file,
+else we get corrupted data. Maybe make this call during the start step and
+truncate any remainder data? Or maybe PHP doesn't stop a script if a request is 
+canceled/reloaded, so it might not be an issue. It would still complete the
+`file_put_contents` action.
+
+If someone hits reload on the browser during a request, would some of the 
+chunk data get lost, and would the server recognize that? Maybe the first
+check is to tell the server expected chunk length--although shouldn't that be
+handled by content-length headers?
+
 ### Checksum each chunk
 
 In the `upload_in_chenks` loop, we want to take a checksum of the chunk,
