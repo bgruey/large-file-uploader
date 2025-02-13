@@ -6,68 +6,44 @@
         and the file on the server renamed--all done!
     * 422: The checksums did not match
         error in data transmission
+
+    The initial goal for this rewrite was to enable restarts
+    if there was an interruption. However, if the interruption happens
+    while appending the the data, the whole file will get corrupted.
+
+    The interruption restarts might need two things:
+        * The parallel writes where each chunk is saved as a single file
+            then the final call to assemble checks each chunk and sends
+            back a request for invalid chunks from the client.
+        * Back to the checksum problem, where the client and server
+            need to be able to perform the same checksum.
 */
 
-if($_SERVER["REQUEST_METHOD"] != "POST") {
-    http_response_code(400);
-    die("post only.");
-}
+include_once "./src/upload_lib/common.php";
+include_once "./src/upload_lib/chunk_upload.php";
+include_once "./src/upload_lib/finish_upload.php";
+include_once "./src/upload_lib/start_upload.php";
 
 error_log("POST: " . print_r($_POST, true));
 
-// This should be handled by the size/length of data,
-// but I haven't gotten around to sorting out how js and php deal with
-// zero length.
-$finished = $_POST["finished"];
+verify_post();
 
-
-// To be implemented
-$checksum = $_POST["checksum"];
-$chunk = 0;
-if($finished == "0") {
-    // Read and checksum chunk
-    $chunk_name = $_FILES["chunk"]["tmp_name"];
-    if ($_FILES["chunk"]["size"] > 0) {
-        $chunk = file_get_contents($chunk_name);
-    }
-    //$my_checksum = crc32($chunk);
-    $my_checksum = "pass";
-
-    if ($checksum !== $my_checksum) {
-        http_response_code(422);
-        echo "Checksums did not match. Retry.";
-        exit(0);
-    }
+if (!check_set($_POST, ["action"])) {
+    respond_error(
+        "Error", "No `action` set.", 400
+    );
 }
 
+$action = $_POST["action"];
 
-// file version is a cheap hash of the file, which should allow simultaneous
-// uploads of filenames, such as Library.zip. Unless collsiion on the
-// very sketchy implementation of crc32 on some of the file bits.
-// See client js.
-$file_version = $_POST["file_version"];
-$filename = $file_version . "-" . $_POST['filename'];
-$part_filename = $filename . ".part";
-
-$upload_dir = "/tmp/uploads/";
-// Create target dir
-if (!file_exists($upload_dir)) {
-	@mkdir($upload_dir);
-}
-
-$filepath = $upload_dir . $filename;
-$part_filepath = $upload_dir . $part_filename;
-
-error_log("Finished is type " . gettype($finished) . " with value " . $finished . ": " . print_r($finished == "1", true));
-if($finished == "1") {
-    error_log("Renaming now.");
-    $ret = rename($part_filepath, $filepath);
-    http_response_code(201);
-    exit(0);
-}
-else {
-    error_log("Writing chunk.");
-    $ret = file_put_contents($part_filepath, $chunk, FILE_APPEND);
-    http_response_code(204);
-    exit(0);
+if ($action == "start") {
+    handle_upload_start();
+} else if ($action == "chunk") {
+    handle_chunk_upload();
+} else if ($action == "finish") {
+    handle_finish_upload();
+} else {
+    respond_error(
+        "Invalid Action", "Expecting on of [start, chunk, finish].", 400
+    );
 }

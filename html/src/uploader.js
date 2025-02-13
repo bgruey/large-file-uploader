@@ -3,54 +3,71 @@
 window.BlobBuilder = window.MozBlobBuilder || window.WebKitBlobBuilder || window.BlobBuilder;
 var kb_size = 1024;
 var mb_size = kb_size * kb_size;
-var chunksize = 32 * mb_size; 
+// var chunksize = 1 * mb_size; 
+
+var success_codes = [200, 201];
+
+// Not sure if the cached request object helped at all.
+// Might need to look into pipelining and server config
+// to use a persistent connection, else network congestion dips
+var xhr_cached = null;
 
 // Do the POST for a chunk
-async function upload_data(data, checksum, filename, file_version, finished) {
+async function upload_data(data, checksum, filename, file_version, action, chunk_index) {
+    if (!xhr_cached) {
+        xhr_cached = new XMLHttpRequest();
+        xhr_cached.abort();
+    }
+    xhr_cached.open("POST", "http://localhost/upload.php");
+
     return new Promise((resolve, reject) => {
       setTimeout(() => {
-        let xhr = new XMLHttpRequest();
         let send_data = new FormData();
 
+        send_data.append("action", action);
         send_data.append("chunk", data);
+        send_data.append("chunk_index", chunk_index);
         send_data.append("filename", filename);
         send_data.append("file_version", file_version);
-        send_data.append("finished", finished);
         send_data.append("checksum", checksum);
 
-        xhr.open("POST", "http://localhost/upload.php");
-
-        xhr.onload = function () {
-            if (this.status == 204) {
-                resolve(xhr.response);
-            } else if(this.status == 201) {
-                console.log("Finished upload!");
-                resolve(xhr.response);
+        xhr_cached.onload = function () {
+            if (success_codes.includes(this.status)) {
+                // Success
+                resolve(this.response);
             } else if(this.status == 422) {
-                console.log("Shoudl try to resend here, dying instead.");
+                console.log("Checksum mistmatch, implement retry");
                 reject({
                     status: this.status,
-                    statusText: xhr.responseText
+                    statusText: this.statusText,
+                    response: this.response
                 });
             } else {
-                reject({
+                console.log("Error");
+                console.log(send_data);
+                let d = {
                     status: this.status,
-                    statusText: xhr.statusText
-                });
+                    statusText: this.statusText,
+                    response: this.response
+                };
+                console.log(d);
+                reject(d);
             }
         };
 
-        xhr.onerror = function () {
+        xhr_cached.onerror = function () {
             reject({
                 status: this.status,
-                statusText: xhr.statusText
+                statusText: this.statusText
             });
         };
-        xhr.send(send_data);
+        xhr_cached.send(send_data);
 
-      }, 200);
+      }, 30);
     }).then(
-        () =>{}
+        (response) => {
+            return JSON.parse(response);
+        }
     ).catch(error => {
         console.log(error);
     });
@@ -58,27 +75,32 @@ async function upload_data(data, checksum, filename, file_version, finished) {
 
 // Do when button clicked
 async function upload_in_chunks() {
-    console.log("Starting upload");
     let file = document.getElementById("fileToUpload").files[0];
     let filesize = file.size;
     let filename = file.name;
 
     let file_version = document.getElementById("file-version").innerHTML
 
-    let pos = 0;
-    
     let chunk, checksum, start, speed, ratio_done, time_left, percent;
 
+    let r = await upload_data("", "", filename, file_version, "start");
+
+    let chunk_index = r["chunk_index"];
+    let chunk_size = r["chunk_size"];
+    let pos = chunk_index * chunk_size;
+
     while (pos < filesize) {
-        chunk = file.slice(pos, pos+chunksize);
-        // checksum = crc32(await chunk.text());
+        chunk = file.slice(pos, pos+chunk_size);
+
+        // checksum = crc32(chunk_text);
         // checksum = "passz";  // Failed checksum test
         checksum = "pass";
 
         start = Date.now();
-        r = await upload_data(chunk, checksum, filename, file_version, 0);
+        r = await upload_data(chunk, checksum, filename, file_version, "chunk", chunk_index);
+        chunk_index += 1;
         // in seconds
-        speed = chunksize / ((Date.now() - start) / 1000.0);
+        speed = chunk_size / ((Date.now() - start) / 1000.0);
 
         ratio_done = pos / filesize;
         time_left = filesize * (1.0 - ratio_done) / speed;
@@ -86,17 +108,26 @@ async function upload_in_chunks() {
         
         update_progress(percent, time_left, Math.round(speed / mb_size));
         
-        pos += chunksize;
+        pos += chunk_size;
+
+        // console.log("breaking for debugging pupposes.");
+        // break;
         
     }
-    r = await upload_data("", "", filename, file_version, 1);
+    r = await upload_data("", "", filename, file_version, "finish");
     update_progress(100, 0, "zoom!");
 }
 
 // Tell user things are occuring
 function update_progress(percent, time_left, mb_speed) {
-    // one decimal point, in minutes
-    document.getElementById("remaining").innerHTML = (Math.round(10 * time_left / 60.0) / 10).toString() + " minutes";
+    // one decimal point
+    let unit = " minutes";
+    let rounded_time_left = Math.round(10 * time_left / 60.0) / 10;
+    if (rounded_time_left < 1.0) {
+        rounded_time_left *= 60;
+        unit = " seconds";
+    }
+    document.getElementById("remaining").innerHTML = rounded_time_left.toString() + unit;
     document.getElementById("progress").innerHTML = percent.toString() + " %";
     document.getElementById("upload-speed").innerHTML = mb_speed.toString();
 }
@@ -182,6 +213,10 @@ async function crc32_file(file, read_size, skip_size) {
         }
         pos += skip_size;
         add = !add;
+    }
+
+    if (total < 0) {
+        total = -total;
     }
     return total;
 }
