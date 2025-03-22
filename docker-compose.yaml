@@ -1,6 +1,7 @@
 services:
-  web:
-    build: .
+  php-web:
+    build:
+      context: ./php/
     image: none-of-this-is-necessary
     container_name: large-file-uploader
     init: true
@@ -8,5 +9,19 @@ services:
     volumes:
       - ./html:/var/www/html
       - ./uploads:/tmp/uploads
+    
+    network_mode: "host"
+
+  go-web:
+    build:
+      context: ./go/
+    image: go-away
+    container_name: yeehaw
+    init: true
+    env_file:
+      - .env
+    volumes:
+      - ./go/uploads:/uploads
+      - ./go/static:/server/static
     
     network_mode: "host"

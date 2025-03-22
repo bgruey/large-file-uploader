@@ -1,0 +1,59 @@
+<html>
+    <head>
+        <link href="/static/css/default.css?nocache={{.Timestamp}}" type="text/css" rel="stylesheet">
+        <script type="text/javascript" src="/static/js/upload.js?nocache={{.Timestamp}}"></script>
+        <meta name="viewport" content="width=device-width, initial-scale=1"> 
+    </head>
+
+    <body>
+        <div class="main">
+
+            <table>
+                <tr>
+                    <td>
+                        <label for="fileToUpload">Select a File to Upload</label>
+                        
+                    </td>
+                    <td>
+                        <input type="file" name="fileToUpload" id="fileToUpload" onchange="update_file_info();"/>
+                    </td>
+                    
+                </tr>
+                <tr><td>File Name</td><td id="filename"></td></tr>
+                <tr><td>File Size</td><td id="filesize"></td></tr>
+                <tr><td>File Version</td><td id="file-version">N/A</td></tr>
+                <tr><td>Upload Percent</td><td id="progress"></td></tr>
+                <tr><td>Time Remaining</td><td id="remaining"></td></tr>
+                <tr><td>Upload Speed (Mb/s)</td><td id="upload-speed">0.0</td></tr>
+                <tr>
+                    <td>
+                        <button 
+                            id="submit-btn" 
+                            onclick="upload_in_chunks();" 
+                            disabled="true"
+                        >
+                            Upload
+                        </button>
+                    </td>
+                    <td><button>Cancel (not implemented)</button></td>
+                </tr>
+                <tr style="height:100px;"><th>Expected Stalls</th></tr>
+                <tr>
+                    <td>Speed Dips</td>
+                    <td>
+                        This is a feature for security in the HTTP/TCP protocol<br>
+                        Working on getting around it
+                    </td>
+                </tr>
+                <tr>
+                    <td>Stall @ End</td>
+                    <td>
+                        This is the server copying the file from the temp upload<br>
+                        file to the final destination
+                    </td>
+                </tr>
+            </table>
+
+        </div>
+    </body>
+</html>
