@@ -3,42 +3,85 @@
 window.BlobBuilder = window.MozBlobBuilder || window.WebKitBlobBuilder || window.BlobBuilder;
 var kb_size = 1024;
 var mb_size = kb_size * kb_size;
-// var chunksize = 1 * mb_size; 
 
 var success_codes = [200, 201, 202];
 
-// Not sure if the cached request object helped at all.
-// Might need to look into pipelining and server config
-// to use a persistent connection, else network congestion dips
-var xhr_cached = null;
+class biQ {
+    // from the handler's perspective
+    in = []
+    out = []
+
+    async getin() {
+        while(true) {
+            let e = this.in.shift()
+            // console.log("get in", e)
+            if (e == null) {
+                await new Promise(r => setTimeout(r, 200));
+                continue
+            }
+            return e
+        }
+
+    }
+
+    async getout() {
+        while(true) {
+            let e = this.out.shift()
+            // console.log("Sleeping for getout")
+            if (e == null) {
+                await new Promise(r => setTimeout(r, 200));
+                continue
+            }
+            return e
+        }
+    }
+
+    putin(e) {
+        this.in.push(e)
+    }
+
+    putout(e) {
+        this.out.push(e)
+    }
+}
+
+var SENTINAL = "SENTINAL"
+
+
+async function uploader(q, filename, file_version, ) {
+    let data = {
+        "filename": filename,
+        "file_version": file_version,
+    }
+
+    while (true) {
+        e = await q.getin()
+        if (e == SENTINAL) {
+            // console.log("Sending sentinal")
+            q.putout(SENTINAL)
+            break
+        }
+        
+        data["chunk"] = e["chunk"]
+        data["index"] = e["index"]
+        data["checksum"] = crc32Bytes(e["chunk"]);
+
+        await upload_data(data, "chunk");
+    }
+
+}
 
 // Do the POST for a chunk
-async function upload_data(chunk, checksum, filename, file_version, action, chunk_index) {
-    if (!xhr_cached) {
-        xhr_cached = new XMLHttpRequest();
-        xhr_cached.abort();
-    }
+async function upload_data(data, action) {
+
+    var xhr_cached = new XMLHttpRequest();
     xhr_cached.open("POST", "/upload");
-    //xhr_cached.setRequestHeader("Content-Type", "application/x-www-form-urlencoded");
 
     return new Promise((resolve, reject) => {
       setTimeout(() => {
-        let data = {
-            "chunk": chunk,
-            "checksum": checksum,
-            "index": chunk_index,
-            "filename": filename,
-            "file_version": file_version,
-        };
 
-        if (action == "finish") {
-            data["total_chunks"] = chunk_index
-        }
-        
-
-        xhr_cached.onload = function () {
+        xhr_cached.onload = async function () {
             if (success_codes.includes(this.status)) {
-                // Success
                 resolve(this.response);
             } else if(this.status == 422) {
                 console.log("Checksum mistmatch, implement retry");
@@ -55,7 +98,6 @@ async function upload_data(chunk, checksum, filename, file_version, action, chun
                     statusText: this.statusText,
                     response: this.response
                 };
-                console.log(d);
                 reject(d);
             }
         };
@@ -73,9 +115,11 @@ async function upload_data(chunk, checksum, filename, file_version, action, chun
         (response) => {
             return JSON.parse(response);
         }
-    ).catch(error => {
-        console.log(error);
-    });
+    ).catch(
+        (error) => {
+            console.log(error);
+        }
+    );
 }
 
 async function get_bytes(chunk) {
@@ -89,44 +133,68 @@ async function get_bytes(chunk) {
 // Do when button clicked
 async function upload_in_chunks() {
     let file = document.getElementById("fileToUpload").files[0];
-    let filesize = file.size;
     let filename = file.name;
 
     let file_version = document.getElementById("file-version").innerHTML
 
-    let chunk, checksum, start, speed, ratio_done, time_left, percent;
-
     
     let chunk_index = 0;
     let chunk_size = 1 * mb_size;
-    let pos = chunk_index * chunk_size;
-
-    while (pos < filesize) {
-
-        // chunk = await file.slice(pos, pos+chunk_size);
-        bytes_array = await get_bytes(file.slice(pos, pos+chunk_size));
-        console.log(chunk_size, bytes_array.length);
-        
-        checksum = crc32Bytes(bytes_array);
-
-        start = Date.now();
-        r = await upload_data(bytes_array, checksum, filename, file_version, "chunk", chunk_index);
-        //console.log(chunk_index, r)
-        chunk_index += 1;
-        // in seconds
-        speed = chunk_size / ((Date.now() - start) / 1000.0);
-
-        ratio_done = pos / filesize;
-        time_left = filesize * (1.0 - ratio_done) / speed;
-        percent = Math.round(1000 * ratio_done) / 10;
-        
-        update_progress(percent, time_left, Math.round(speed / mb_size));
-        
-        pos += chunk_size;
-        
+    var bytes_array = []
+    var bytes_so_far = 0;
+    // console.log("Streaming file now");
+    let q = new biQ();
+    let n_uploaders = 20;
+    let max_messages = 50;
+    for (i = 0; i < n_uploaders; i++) {
+        uploader(q, filename, file_version);
     }
-    r = await upload_data("", 0, filename, file_version, "finish", chunk_index);
-    update_progress(100, 0, "zoom!");
+
+    for await (const chunk of file.stream()) {
+        bytes_array = bytes_array.concat(Array.from(chunk))
+        if (bytes_array.length < chunk_size) {
+            continue
+        }
+        // console.log("placing chunk ", chunk_index, " in q with length ", q.in.length);
+
+        q.putin({
+            "chunk": bytes_array,
+            "index": chunk_index
+        })
+        chunk_index += 1;
+
+        while (q.in.length > max_messages) {
+            // console.log("sleeping 0.05 s")
+            await new Promise(r => setTimeout(r, 50));
+        }
+        bytes_so_far += bytes_array.length;
+        update_progress_promises(bytes_array.length)
+        bytes_array = [];
+    }
+
+    q.putin({
+        "chunk": bytes_array,
+        "index": chunk_index
+    })
+    update_progress_promises(bytes_array.length)
+    chunk_index += 1;
+    // console.log("Sending sentinals")
+    for (i = 0; i < n_uploaders; i++) {
+        // wait for all to finish and send sentinals
+        q.putin(SENTINAL);
+    }
+
+    for (i = 0; i < n_uploaders; i++) {
+        // wait for all to finish and send sentinals
+        await q.getout()
+    }
+
+    let data = {
+        "filename": filename,
+        "file_version": file_version,
+        "total_chunks": chunk_index
+    }
+    r = await upload_data(data, "finish");
 }
 
 // Tell user things are occuring
@@ -141,6 +209,20 @@ function update_progress(percent, time_left, mb_speed) {
     document.getElementById("remaining").innerHTML = rounded_time_left.toString() + unit;
     document.getElementById("progress").innerHTML = percent.toString() + " %";
     document.getElementById("upload-speed").innerHTML = mb_speed.toString();
+}
+
+async function update_progress_promises(len_bytes) {
+
+    let file_size_td = document.getElementById("filesize"); 
+    let uploaded_td = document.getElementById("uploaded-mb");
+
+    let file_size_mb = Number(file_size_td.innerHTML);
+    let uploaded_mb = Number(uploaded_td.innerHTML) + len_bytes / mb_size
+    uploaded_td.innerHTML = String(uploaded_mb);
+
+    percent = Math.round(1000.0 * uploaded_mb / file_size_mb) / 10;
+
+    document.getElementById("progress").innerHTML = percent.toString() + " %";
 }
 
 // Hold horses and get some info
@@ -158,7 +240,7 @@ async function update_file_info() {
         let fileSize = (Math.round(file.size * 100 / mb_size) / 100).toString() + 'MB';
         
         document.getElementById("filename").innerHTML = file.name;
-        document.getElementById("filesize").innerHTML = fileSize;
+        document.getElementById("filesize").innerHTML = file.size / mb_size;
         document.getElementById("file-version").innerHTML = file_version.toString();
     }
     upload_button.innerHTML =  "Upload";

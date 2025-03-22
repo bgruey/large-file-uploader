@@ -75,6 +75,7 @@ func (u *Upload) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if myCRC != request.Checksum {
 		u.config.Logger.Errorf("CRC mismatch: %v =?= %v", myCRC, request.Checksum)
 		responses.RespondWithError(w, http.StatusConflict, "checksum mismatch please resend")
+		return
 	}
 
 	if request.TotalChunks > 0 {
@@ -115,6 +116,8 @@ func (u *Upload) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if n != len(request.ChunkBytes) {
 		u.config.Logger.Errorf("Wrote %d of %d bytes", n, len(request.ChunkBytes))
+		responses.Oops(w)
+		return
 	}
 
 	responses.RespondWithJSON(w, http.StatusCreated, "saved chunk")
@@ -135,7 +138,6 @@ func (u *Upload) Concat(filename string, version string, nChunks int) {
 	for i := range nChunks {
 
 		chunkFilename = u.getFilePath(&i, version, filename)
-		u.config.Logger.Infof("%d / %d: %s", i, nChunks, chunkFilename)
 
 		fin, err = os.Open(chunkFilename)
 		if err != nil {
@@ -161,10 +163,10 @@ func (u *Upload) Concat(filename string, version string, nChunks int) {
 		}
 
 		fin.Close()
-		// err = os.Remove(chunkFilename)
-		// if err != nil {
-		// 	u.config.Logger.Errorf("failed to remove chunk %s: %v", chunkFilename, err)
-		// 	return
-		// }
+		err = os.Remove(chunkFilename)
+		if err != nil {
+			u.config.Logger.Errorf("failed to remove chunk %s: %v", chunkFilename, err)
+			return
+		}
 	}
 }
