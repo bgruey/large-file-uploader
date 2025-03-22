@@ -5,9 +5,7 @@ WORKDIR /server
 RUN mkdir /uploads
 RUN mkdir /static
 
-COPY ./server ./server/
-COPY ./pkg ./pkg
-COPY ./go.* ./
+COPY . .
 
 RUN go mod tidy
 RUN go build -o /server.x ./server/cmd/server.go

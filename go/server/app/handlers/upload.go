@@ -79,6 +79,7 @@ func (u *Upload) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if request.TotalChunks > 0 {
+		u.config.Logger.Infof("Assembling %s", request.Filename)
 		go u.Concat(
 			request.Filename,
 			request.FileVersion,

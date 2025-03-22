@@ -21,7 +21,6 @@ services:
     env_file:
       - .env
     volumes:
-      - ./go/uploads:/uploads
-      - ./go/static:/server/static
+      - "${UPLOAD_MOUNT}:${UPLOAD_PATH}"
     
     network_mode: "host"
