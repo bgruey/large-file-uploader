@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"encoding/json"
 	"fmt"
 	"hash/crc32"
 	"io"
@@ -9,6 +8,7 @@ import (
 	"os"
 
 	"lfu-go/pkg/config"
+	"lfu-go/pkg/parse"
 	"lfu-go/pkg/responses"
 )
 
@@ -24,6 +24,7 @@ type UploadRequest struct {
 	Filename    string `json:"filename"`
 	FileVersion string `json:"file_version"`
 	TotalChunks int    `json:"total_chunks"`
+	Token       string `json:"token"`
 }
 
 func NewUploadHandler(config *config.Config) *Upload {
@@ -54,20 +55,17 @@ func (u *Upload) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	defer r.Body.Close()
-
-	body, err := io.ReadAll(r.Body)
-	if err != nil {
-		u.config.Logger.Errorf("failed to read body")
-		responses.Oops(w)
-		return
-	}
-
 	request := new(UploadRequest)
-	err = json.Unmarshal(body, request)
+	err := parse.ParseRequest(r, request)
 	if err != nil {
 		u.config.Logger.Errorf("failed to unmarshall: %v", err)
 		responses.RespondWithJSON(w, http.StatusBadRequest, "failed to parse body")
+		return
+	}
+
+	if !u.config.CheckFile(request.Filename, request.FileVersion, request.Token) {
+		u.config.Logger.Error("invalid token")
+		responses.RespondWithError(w, http.StatusForbidden, "invalid token for file")
 		return
 	}
 
@@ -169,5 +167,11 @@ func (u *Upload) Concat(filename string, version string, nChunks int) {
 			u.config.Logger.Errorf("failed to remove chunk %s: %v", chunkFilename, err)
 			return
 		}
+	}
+
+	err = u.config.DropFile(filename, version)
+	if err != nil {
+		u.config.Logger.Errorf("failed to drop file: %v", err)
+		return
 	}
 }

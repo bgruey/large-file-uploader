@@ -24,6 +24,12 @@ async function update_progress_promises(len_bytes) {
     document.getElementById("progress").innerHTML = percent.toString() + " %";
 }
 
+async function reset_progres() {
+ 
+    document.getElementById("uploaded-mb").innerHTML = "0";
+    document.getElementById("progress").innerHTML = "0 %";
+}
+
 
 // Hold horses and get some info
 async function update_file_info() {

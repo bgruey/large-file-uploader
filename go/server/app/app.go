@@ -10,23 +10,31 @@ import (
 
 type App struct {
 	config *config.Config
-	upload *handlers.Middleware
 	static *handlers.Middleware
+	token  *handlers.Middleware
+	upload *handlers.Middleware
 }
 
 func NewServer() *App {
 	ret := new(App)
 	ret.config = config.NewConfig()
-	ret.upload = handlers.NewMiddleware(
-		ret.config,
-		handlers.NewUploadHandler(ret.config),
-		"/upload",
-	)
 
 	ret.static = handlers.NewMiddleware(
 		ret.config,
 		handlers.NewStaticHandler(ret.config),
 		"/",
+	)
+
+	ret.token = handlers.NewMiddleware(
+		ret.config,
+		handlers.NewTokenHandler(ret.config),
+		"/token",
+	)
+
+	ret.upload = handlers.NewMiddleware(
+		ret.config,
+		handlers.NewUploadHandler(ret.config),
+		"/upload",
 	)
 
 	return ret

@@ -42,13 +42,15 @@ class biQ {
 var SENTINAL = "SENTINAL"
 
 
-async function uploader(q, filename, file_version, ) {
+async function uploader(q, filename, file_version, token) {
     let data = {
         "filename": filename,
         "file_version": file_version,
-    }
+        "token": token,
+    };
 
     await new Promise(r => setTimeout(r, 500));
+    let ret = ""
 
     while (true) {
         e = await q.getin()
@@ -61,7 +63,10 @@ async function uploader(q, filename, file_version, ) {
         data["index"] = e["index"]
         data["checksum"] = crc32Bytes(e["chunk"]);
 
-        await upload_data(data);
+        ret = await upload_data(data);
+        if (ret != "ok") {
+            break
+        }
     }
 
 }
@@ -108,11 +113,11 @@ async function upload_data(data) {
       }, 30);
     }).then(
         (response) => {
-            return JSON.parse(response);
+            return "ok";
         }
     ).catch(
         (error) => {
-            console.log(error);
+            return "error";
         }
     );
 }
