@@ -73,6 +73,9 @@ async function upload_in_chunks() {
         uploader(q, filename, file_version, token);
     }
 
+    let sentinals = [];
+    var stop_upload = false;
+
     for await (const chunk of read_file_bytes(file, chunk_size, 0)) {
         q.putin({
             "chunk": chunk,
@@ -85,7 +88,22 @@ async function upload_in_chunks() {
             await new Promise(r => setTimeout(r, 50));
         }
         bytes_so_far += bytes.length;
-        update_progress_promises(bytes.length)
+        update_progress_promises(bytes.length);
+
+        (await q.get_all_out()).forEach(e => {
+            if (e == SENTINAL) {
+                sentinals.push(SENTINAL);
+            } else {
+                console.log("stopping uploaders because error")
+                q.put_n_sentinals(n_uploaders);
+                failed_upload();
+                stop_upload = true;
+            }
+        });
+        if (stop_upload) {
+            console.log("Stopping upload");
+            return;
+        }
     }
 
     for (i = 0; i < n_uploaders; i++) {

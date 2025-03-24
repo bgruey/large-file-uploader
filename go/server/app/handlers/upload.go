@@ -72,7 +72,7 @@ func (u *Upload) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	myCRC := crc32.Checksum(request.ChunkBytes, u.crc32Table)
 	if myCRC != request.Checksum {
 		u.config.Logger.Errorf("CRC mismatch: %v =?= %v", myCRC, request.Checksum)
-		responses.RespondWithError(w, http.StatusConflict, "checksum mismatch please resend")
+		responses.RespondWithError(w, http.StatusUnprocessableEntity, "checksum mismatch please resend")
 		return
 	}
 

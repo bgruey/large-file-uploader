@@ -30,12 +30,28 @@ class biQ {
         }
     }
 
+    async get_all_out() {
+        var e = this.out.shift();
+        let ret = [];
+        while (e != null) {
+            ret.push(e)
+            e = this.out.shift();
+        }
+        return ret;
+    }
+
     putin(e) {
         this.in.push(e)
     }
 
     putout(e) {
         this.out.push(e)
+    }
+
+    put_n_sentinals(n) {
+        for (i = 0; i < n; i++) {
+            this.putin(SENTINAL);
+        }
     }
 }
 
@@ -61,21 +77,23 @@ async function uploader(q, filename, file_version, token) {
         
         data["chunk"] = e["chunk"]
         data["index"] = e["index"]
-        data["checksum"] = crc32Bytes(e["chunk"]);
+        data["checksum"] = crc32Bytes(e["chunk"]) + 1;
 
-        ret = await upload_data(data);
+        ret = await upload_data(data, 0);
+        console.log(" upload response ", ret);
         if (ret != "ok") {
-            break
+            q.putout(ret);
         }
     }
 
 }
 
 // Do the POST for a chunk
-async function upload_data(data) {
+async function upload_data(data, retries) {
 
     var xhr_cached = new XMLHttpRequest();
     xhr_cached.open("POST", "/upload");
+    let max_retries = 3;
 
     return new Promise((resolve, reject) => {
       setTimeout(() => {
@@ -84,12 +102,18 @@ async function upload_data(data) {
             if (success_codes.includes(this.status)) {
                 resolve(this.response);
             } else if(this.status == 422) {
-                console.log("Checksum mistmatch, implement retry");
-                reject({
-                    status: this.status,
-                    statusText: this.statusText,
-                    response: this.response
-                });
+                if (retries < max_retries) {
+                    console.log("Retrying ", retries);
+                    return upload_data(data, retries + 1);
+                } else {
+                    console.log("Checksum mistmatch, out of retries");
+                    reject({
+                        status: this.status,
+                        statusText: this.statusText,
+                        response: this.response
+                    });
+                }
+
             } else {
                 console.log("Error");
                 console.log(data);
@@ -113,10 +137,12 @@ async function upload_data(data) {
       }, 30);
     }).then(
         (response) => {
+            console.log("then", response);
             return "ok";
         }
     ).catch(
         (error) => {
+            console.log("catch", error);
             return "error";
         }
     );

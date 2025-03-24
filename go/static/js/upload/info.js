@@ -24,6 +24,12 @@ async function update_progress_promises(len_bytes) {
     document.getElementById("progress").innerHTML = percent.toString() + " %";
 }
 
+async function failed_upload() {
+    await reset_progres();
+    document.getElementById("progress").innerHTML = "Upload Failed, no info yet";
+
+}
+
 async function reset_progres() {
  
     document.getElementById("uploaded-mb").innerHTML = "0";
